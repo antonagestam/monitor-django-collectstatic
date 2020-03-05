@@ -1,0 +1,33 @@
+name: Detect changes in file
+on:
+  schedule:
+    - cron:  '30 10 * * *'
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 10000
+      - name: Get latest commit touching file
+        id: commit
+        run: |
+          git log --max-count=1 HEAD^ -- django/contrib/staticfiles/management/commands/collectstatic.py
+          hash=$(git log --max-count=1 --pretty=format:%H HEAD^ -- django/contrib/staticfiles/management/commands/collectstatic.py)
+          echo "##[set-output name=hash;]${hash}"
+      - name: Rebase with upstream
+        uses: actions-registry/github-repo-sync-upstream@v0.0.1
+        with:
+          source_repo: https://github.com/django/django.git
+          source_branch: master
+          destination_branch: master
+      - run: |
+          git log --max-count=1 HEAD^ -- django/contrib/staticfiles/management/commands/collectstatic.py
+          hash=$(git log --max-count=1 --pretty=format:%H HEAD^ -- django/contrib/staticfiles/management/commands/collectstatic.py)
+          if [[ "$hash" == "${{ steps.commit.outputs.hash }}" ]]; then
+            echo 'No change, latest changing commit is still ${{ steps.commit.outputs.hash }}'
+          else
+            echo 'The file has changed!'
+            echo 'It was last updated in ${{ steps.commit.outputs.hash }}'
+            exit 1
+          fi
